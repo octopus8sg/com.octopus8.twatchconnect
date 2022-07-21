@@ -45,7 +45,7 @@ public class SiteUrlActivity extends Activity {
                 }else {
                     Utils.savePreferences(Utils.SUB_DOMAIN,url,context);
                     Toast.makeText(SiteUrlActivity.this, "Done", Toast.LENGTH_SHORT).show();
-                    startActivity(new Intent(SiteUrlActivity.this, MainActivity.class));
+                    startActivity(new Intent(SiteUrlActivity.this, SplashActivity.class));
                     finish();
 
                 }

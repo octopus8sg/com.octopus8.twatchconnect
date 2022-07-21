@@ -2,18 +2,29 @@ package com.socialservicesconnect.twatchconnect;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlarmManager;
+import android.app.AlertDialog;
+import android.app.PendingIntent;
 import android.app.ProgressDialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.PowerManager;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.TextUtils;
+import android.util.EventLogTags;
 import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
@@ -29,6 +40,7 @@ import com.android.volley.toolbox.JsonObjectRequest;
 import com.android.volley.toolbox.Volley;
 import com.socialservicesconnect.twatchconnect.databinding.ActivityMainBinding;
 
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.Date;
@@ -49,9 +61,85 @@ public class MainActivity extends Activity implements SensorEventListener {
     private static final int PERMISSION_REQUEST_READ_BODY_SENSORS = 1;
     private final String TAG = MainActivity.class.getSimpleName();
     Timer timer;
+    PowerManager.WakeLock wl;
     private Context context;
     TimerTask doAsynchronousTask;
     private String isFirst = "yes";
+    private AlarmManager alarmMgr;
+    private PendingIntent pendingIntent;
+    private String isOnWrist="no";
+    private BroadcastReceiver mMessageReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            PowerManager pm = (PowerManager)getApplicationContext().getSystemService(Context.POWER_SERVICE);
+            wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
+            wl.acquire();
+
+
+
+
+
+
+
+            ConnectivityManager conMgr =  (ConnectivityManager)getSystemService(Context.CONNECTIVITY_SERVICE);
+            NetworkInfo netInfo = conMgr.getActiveNetworkInfo();
+            if (netInfo == null){
+                WifiManager wman = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
+                Log.d("result", "wifi not available");
+                try {
+                    wman.reconnect();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    Log.d("result", "wifi not available "+e);
+
+                }
+                Toast.makeText(context, "wifi error ", Toast.LENGTH_SHORT).show();
+            }else{
+                Toast.makeText(context, "wifi working ", Toast.LENGTH_SHORT).show();
+                Log.d("result", "**wifi is available**");
+
+            }
+
+            Log.d("result", "broadcast called in main ");
+
+
+//            if(isOnWrist.equals("yes")){
+//                sensorManager.registerListener(MainActivity.this, bpmSensor, sensorManager.SENSOR_DELAY_FASTEST);
+//            }
+
+            sensorManager.registerListener(MainActivity.this, bpmSensor, sensorManager.SENSOR_DELAY_FASTEST);
+
+//            if (isFirst.equals("no")) {
+//                Log.d("result", "API called in main is first = " + isFirst);
+//                sendSensorData();
+//
+//            }
+
+
+//            startService(new Intent(getApplicationContext(),MyService.class));
+
+
+
+
+
+
+
+            Handler handler = new Handler();
+            handler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (isFirst.equals("no")) {
+                        Log.d("result", "API called in main is first = " + isFirst);
+                        sendSensorData();
+                        wl.release();
+
+                    }
+                }
+            }, 3000);
+
+
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -128,10 +216,27 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
         String isTimerStarted = Utils.getPreferences(Utils.KEY_IS_TIMER_STARTED, context);
 
-        if (isTimerStarted.equals("no")) {
-            startTimerTask();
+//        if (isTimerStarted.equals("no")) {
+//            startTimerTask();
+//
+//        }
 
+
+        alarmMgr = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        Intent intent = new Intent(context, AlarmReceiver.class);
+//        pendingIntent = PendingIntent.getBroadcast(context, 0, intent, 0);
+        pendingIntent = PendingIntent.getBroadcast(
+                getApplicationContext(), 1, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT);
+        // If the alarm has been set, cancel it.
+        if (alarmMgr != null) {
+            alarmMgr.cancel(pendingIntent);
         }
+
+        alarmMgr.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                SystemClock.elapsedRealtime() +
+                        1000*60*30, pendingIntent);
+        Log.d("result", "on create called");
 
     }
 
@@ -143,10 +248,11 @@ public class MainActivity extends Activity implements SensorEventListener {
             public void run() {
                 handler.post(new Runnable() {
                     public void run() {
+                        Log.d("result", "timer is running********** isFirst" + isFirst);
 
-                        Log.d("result", "timer is running**********");
 
                         if (isFirst.equals("no")) {
+                            Log.d("result", "timer is running********** isFirst" + isFirst);
                             sendSensorData();
 
                         }
@@ -154,11 +260,38 @@ public class MainActivity extends Activity implements SensorEventListener {
                 });
             }
         };
-        timer.schedule(doAsynchronousTask, 0, 1800000);
+        timer.schedule(doAsynchronousTask, 0, 60000);
     }
 
 //    1800000
 
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        Log.d("result", "on resume  called");
+
+        context.registerReceiver(mMessageReceiver, new IntentFilter("aws"));
+
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        Log.d("result", "on pause called" );
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        Log.d("result", "on onStop called" );
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        Log.d("result", "on onDestroy called" );
+    }
 
     @Override
     public void onSensorChanged(SensorEvent event) {
@@ -168,7 +301,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
             if (offbody == 0.0) {
                 sensorManager.unregisterListener(this, bpmSensor);
-
+                isOnWrist="no";
 
 //                Toast.makeText(context, "OFF body state", Toast.LENGTH_SHORT).show();
                 str_bpm_valu = "0";
@@ -179,6 +312,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 tvRateNormal.setText(str_bpm_valu);
 
             } else {
+                isOnWrist="yes";
                 sensorManager.registerListener(this, bpmSensor, sensorManager.SENSOR_DELAY_FASTEST);
 //                Toast.makeText(context, "ON body state", Toast.LENGTH_SHORT).show();
             }
@@ -218,6 +352,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                 if (isFirst.equals("yes") && str_bpm_valu_int > 0 && isTimerStarted.equals("no")) {
                     isFirst = "no";
                     Utils.savePreferences(Utils.KEY_IS_TIMER_STARTED, "yes", context);
+
+
                     sendSensorData();
 
                 }
@@ -267,14 +403,29 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         JSONObject parameters = new JSONObject(postParam);
 
-        JsonObjectRequest jsonRequest = new JsonObjectRequest(Request.Method.POST, Utils.HTTP_URL + Utils.getPreferences(Utils.SUB_DOMAIN, context) + Utils.MAIN_URL, parameters, new Response.Listener<JSONObject>() {
+        JsonObjectRequest jsonRequest = new JsonObjectRequest(Request.Method.POST, Utils.HTTP_URL + Utils.getPreferences(Utils.SUB_DOMAIN, context) + Utils.MAIN_URL + Utils.getPreferences(Utils.KEY, context) + "&json=1&api_key=" + Utils.getPreferences(Utils.KEY_API_KEY, context), parameters, new Response.Listener<JSONObject>() {
             @Override
             public void onResponse(JSONObject response) {
                 Log.d("result", response.toString());
-                String dtime = (String) android.text.format.DateFormat.format("dd-MMM-yyyy HH:mm", new Date());
-                tv_update.setText(dtime);
-                Utils.savePreferences(Utils.KEY_LAST_UPDATED, dtime, context);
+                try {
+                    String is_error=response.getString("is_error");
 
+                    if(is_error.equalsIgnoreCase("0")){
+                        String dtime = (String) android.text.format.DateFormat.format("dd-MMM-yyyy HH:mm", new Date());
+                        tv_update.setText(dtime);
+                        Utils.savePreferences(Utils.KEY_LAST_UPDATED, dtime, context);
+                    }else {
+                        Toast.makeText(context, "Error: Your device is not registered  ", Toast.LENGTH_LONG).show();
+
+                    }
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+
+
+
+
+                sensorManager.unregisterListener(MainActivity.this, bpmSensor);
 
 //            Toast.makeText(context, "Error "+response.toString(), Toast.LENGTH_SHORT).show();
                 //TODO: handle success
@@ -284,6 +435,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             public void onErrorResponse(VolleyError error) {
                 error.printStackTrace();
                 Log.d("result", error.toString());
+
                 Toast.makeText(context, "Error " + error.toString(), Toast.LENGTH_SHORT).show();
                 //TODO: handle failure
             }

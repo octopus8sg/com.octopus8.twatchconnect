@@ -9,8 +9,8 @@ android {
         applicationId "com.socialservicesconnect.twatchconnect"
         minSdk 28
         targetSdk 32
-        versionCode 6
-        versionName "1.05"
+        versionCode 9
+        versionName "1.08"
 
     }
 
@@ -33,4 +33,7 @@ dependencies {
     implementation 'androidx.recyclerview:recyclerview:1.2.1'
     implementation 'androidx.wear:wear:1.2.0'
     implementation 'com.android.volley:volley:1.1.1'
+
+    // For WorkManager.
+    implementation 'android.arch.work:work-runtime:1.0.0-beta02'
 }
